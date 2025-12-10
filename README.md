@@ -27,6 +27,7 @@
 - **💾 Persistent Memory**: 150x faster search, 4-32x memory reduction (quantization)
 - **🪝 Advanced Hooks System**: Automated workflows with pre/post operation hooks
 - **📊 GitHub Integration**: 6 specialized modes for repository management
+- **📋 GitHub Projects MCP**: 16 tools for CTO-style epic/project lifecycle management
 - **🌐 Flow Nexus Cloud**: E2B sandboxes, AI swarms, challenges, and marketplace
 
 > 🔥 **Revolutionary AI Coordination**: Build faster, smarter, and more efficiently with AI-powered development orchestration
@@ -248,7 +249,7 @@ claude mcp add ruv-swarm npx ruv-swarm mcp start
 claude mcp add flow-nexus npx flow-nexus@latest mcp start
 ```
 
-### **Available MCP Tools (100 Total)**
+### **Available MCP Tools (116 Total)**
 
 **Core Tools:**
 - `swarm_init`, `agent_spawn`, `task_orchestrate`
@@ -262,10 +263,90 @@ claude mcp add flow-nexus npx flow-nexus@latest mcp start
 **GitHub Tools:**
 - `github_repo_analyze`, `github_pr_manage`, `github_issue_track`
 
+**GitHub Projects Tools (16 NEW):**
+- `github-projects/epic_create`, `github-projects/epic_list`, `github-projects/epic_progress`
+- `github-projects/task_create`, `github-projects/task_update`, `github-projects/task_list`
+- `github-projects/agent_available_issues`, `github-projects/agent_assign_issue`
+- `github-projects/pr_link`, `github-projects/pr_merge_handle`
+- `github-projects/sync_start`, `github-projects/sync_stop`, `github-projects/sync_status`
+
 **Performance Tools:**
 - `benchmark_run`, `performance_report`, `bottleneck_analyze`
 
 📚 **Full Reference**: [MCP Tools Documentation](./docs/MCP-TOOLS.md)
+
+---
+
+## 📋 **GitHub Projects Integration (CTO Workflow)**
+
+The **teammate-agents** module enables a CTO-style workflow where epics automatically become GitHub Projects with full lifecycle management.
+
+### **MCP Tools for GitHub Projects**
+
+```bash
+# Create epic with auto-generated GitHub Project
+mcp__claude-flow__github-projects/epic_create {
+  "title": "User Authentication System",
+  "description": "Complete auth with OAuth, JWT, and MFA"
+}
+
+# Create tasks that become GitHub Issues
+mcp__claude-flow__github-projects/task_create {
+  "epicId": "epic-123",
+  "title": "Implement JWT token generation",
+  "description": "Create secure JWT with refresh tokens",
+  "priority": "high",
+  "labels": ["backend", "security"]
+}
+
+# Agents self-select issues based on capability scoring
+mcp__claude-flow__github-projects/agent_available_issues {
+  "agentId": "backend-agent-1"
+}
+# Returns issues scored by: capability match, workload, priority, recency, complexity, domain
+
+# Assign agent to work on issue
+mcp__claude-flow__github-projects/agent_assign_issue {
+  "agentId": "backend-agent-1",
+  "issueNumber": 42
+}
+
+# Link PRs to issues (auto-close on merge)
+mcp__claude-flow__github-projects/pr_link {
+  "prNumber": 15,
+  "issueNumber": 42
+}
+
+# Start bidirectional sync
+mcp__claude-flow__github-projects/sync_start {
+  "epicId": "epic-123",
+  "intervalMs": 30000
+}
+
+# Track progress from GitHub Project
+mcp__claude-flow__github-projects/epic_progress {
+  "epicId": "epic-123"
+}
+# Returns: { total: 10, completed: 6, inProgress: 3, percentage: 60 }
+```
+
+### **Complete Tool List (16 Tools)**
+
+| Category | Tools |
+|----------|-------|
+| **Epic Management** | `epic_create`, `epic_list`, `epic_get`, `epic_progress` |
+| **Task Management** | `task_create`, `task_list`, `task_update` |
+| **Agent Assignment** | `agent_available_issues`, `agent_assign_issue`, `agent_unassign_issue` |
+| **PR Integration** | `pr_link`, `pr_merge_handle` |
+| **Sync Management** | `sync_start`, `sync_stop`, `sync_status` |
+
+### **Workflow Benefits**
+
+- **Automatic Project Creation**: Epics become GitHub Projects v2 with Status, Priority, Sprint fields
+- **6-Factor Agent Scoring**: Intelligent issue selection based on capabilities, workload, and domain
+- **Bidirectional Sync**: Changes in GitHub reflect in internal state and vice versa
+- **PR Lifecycle**: Link PRs to issues, auto-close on merge, update project status
+- **Memory Integration**: All project metadata persists across sessions
 
 ---
 
@@ -346,7 +427,7 @@ npx claude-flow@alpha memory query "microservices patterns" --reasoningbank
 - **4-32x memory reduction** - 🆕 AgentDB quantization
 - **2-3ms query latency** - ReasoningBank pattern search (legacy)
 - **64 specialized agents** - Complete development ecosystem
-- **100 MCP tools** - Comprehensive automation toolkit
+- **116 MCP tools** - Comprehensive automation toolkit (includes 16 GitHub Projects tools)
 - **180 AgentDB tests** - >90% coverage, production-ready
 
 ---
@@ -387,6 +468,7 @@ npx claude-flow@alpha memory query "microservices patterns" --reasoningbank
 - **[Goal Module](./docs/GOAL-MODULE.md)** - GOAP intelligent planning
 - **[Hive-Mind Intelligence](./docs/HIVE-MIND.md)** - Queen-led coordination
 - **[GitHub Integration](./docs/GITHUB-INTEGRATION.md)** - Repository automation
+- **[Teammate Agents](./src/teammate-agents/)** - Epic-based project coordination with GitHub Projects
 
 ### **⚙️ Configuration & Setup**
 - **[CLAUDE.md Templates](./docs/CLAUDE-MD-TEMPLATES.md)** - Project configs
