@@ -23,6 +23,9 @@ import { statusCommand } from './status.js';
 import { monitorCommand } from './monitor.js';
 import { sessionCommand } from './session.js';
 
+// Import teammate-agents commands
+import { setupTeammateCommands } from './teammate.js';
+
 let orchestrator: Orchestrator | null = null;
 let configManager: ConfigManager | null = null;
 let persistence: JsonPersistenceManager | null = null;
@@ -2535,6 +2538,9 @@ Now, please proceed with the task: ${task}`;
   for (const command of enterpriseCommands) {
     cli.command(command);
   }
+
+  // Add teammate-agents commands (epic management, context restoration)
+  setupTeammateCommands(cli);
 }
 
 function getCapabilitiesForType(type: string): string[] {
