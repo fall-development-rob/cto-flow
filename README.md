@@ -249,7 +249,7 @@ claude mcp add ruv-swarm npx ruv-swarm mcp start
 claude mcp add flow-nexus npx flow-nexus@latest mcp start
 ```
 
-### **Available MCP Tools (116 Total)**
+### **Available MCP Tools (127 Total)**
 
 **Core Tools:**
 - `swarm_init`, `agent_spawn`, `task_orchestrate`
@@ -263,12 +263,18 @@ claude mcp add flow-nexus npx flow-nexus@latest mcp start
 **GitHub Tools:**
 - `github_repo_analyze`, `github_pr_manage`, `github_issue_track`
 
-**GitHub Projects Tools (16 NEW):**
+**GitHub Projects Tools (16):**
 - `github-projects/epic_create`, `github-projects/epic_list`, `github-projects/epic_progress`
 - `github-projects/task_create`, `github-projects/task_update`, `github-projects/task_list`
 - `github-projects/agent_available_issues`, `github-projects/agent_assign_issue`
 - `github-projects/pr_link`, `github-projects/pr_merge_handle`
 - `github-projects/sync_start`, `github-projects/sync_stop`, `github-projects/sync_status`
+
+**Hive-Mind Tools (11 NEW):**
+- `hivemind/epic_load`, `hivemind/task_complete`, `hivemind/task_status_update`
+- `hivemind/detect_completed`, `hivemind/sync_completion`, `hivemind/retrospective_complete`
+- `hivemind/pr_create`, `hivemind/pr_list`, `hivemind/pr_link`, `hivemind/pr_merge`, `hivemind/pr_stats`
+- `hivemind/branch_create`, `hivemind/tasks_ready`, `hivemind/task_next`, `hivemind/task_status_summary`
 
 **Performance Tools:**
 - `benchmark_run`, `performance_report`, `bottleneck_analyze`
@@ -347,6 +353,131 @@ mcp__claude-flow__github-projects/epic_progress {
 - **Bidirectional Sync**: Changes in GitHub reflect in internal state and vice versa
 - **PR Lifecycle**: Link PRs to issues, auto-close on merge, update project status
 - **Memory Integration**: All project metadata persists across sessions
+
+---
+
+## 🐝 **Hive-Mind Orchestration**
+
+The **Hive-Mind** system provides intelligent task filtering and PR tracking, enabling Claude Code agents to pick up only implementation-ready tasks.
+
+### **Task Status Filtering**
+
+Tasks are automatically categorized by status: `backlog`, `ready`, `in_progress`, `review`, `done`, `blocked`
+
+```bash
+# Get tasks ready for implementation
+mcp__claude-flow__hivemind/tasks_ready {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "phase": "Refinement",        # Optional: Filter by SPARC phase
+  "agentType": "coder",         # Optional: Filter by agent type
+  "checkDependencies": true     # Only tasks with completed dependencies
+}
+
+# Get the next highest priority task
+mcp__claude-flow__hivemind/task_next {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "agentType": "coder"
+}
+
+# Get task status summary
+mcp__claude-flow__hivemind/task_status_summary {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123"
+}
+# Returns: { backlog: 2, ready: 5, inProgress: 2, review: 1, done: 8, blocked: 0 }
+
+# Refresh statuses from GitHub
+mcp__claude-flow__hivemind/task_status_refresh {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123"
+}
+```
+
+### **PR Tracking & Lifecycle**
+
+Full pull request lifecycle management with automatic task completion on merge:
+
+```bash
+# Create a branch for a task
+mcp__claude-flow__hivemind/branch_create {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "taskId": "task-epic-123-1"
+}
+
+# Create PR linked to tasks (auto-comments on issues and epic)
+mcp__claude-flow__hivemind/pr_create {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "title": "feat: Implement user authentication",
+  "body": "Implements JWT-based auth with refresh tokens",
+  "branch": "task/42-implement-auth",
+  "taskIds": ["task-epic-123-1", "task-epic-123-2"],
+  "reviewers": ["senior-dev"]
+}
+
+# Handle PR merge (auto-completes linked tasks)
+mcp__claude-flow__hivemind/pr_merge {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "prNumber": 15,
+  "completeTasks": true
+}
+
+# Get PR statistics for epic
+mcp__claude-flow__hivemind/pr_stats {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123"
+}
+# Returns: { total: 5, open: 2, merged: 3, tasksWithPR: 8, tasksWithoutPR: 2 }
+```
+
+### **Retrospective Task Completion**
+
+Load existing projects and auto-detect completed work:
+
+```bash
+# Load an existing epic from GitHub
+mcp__claude-flow__hivemind/epic_load {
+  "owner": "my-org",
+  "repo": "my-project"
+}
+
+# Auto-detect completed tasks based on file existence
+mcp__claude-flow__hivemind/detect_completed {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "workingDir": "/path/to/project"
+}
+
+# Sync detected completions to GitHub (close issues, update project)
+mcp__claude-flow__hivemind/sync_completion {
+  "owner": "my-org",
+  "repo": "my-project",
+  "epicId": "epic-123",
+  "workingDir": "/path/to/project"
+}
+```
+
+### **Hive-Mind Tool Summary (15 Tools)**
+
+| Category | Tools |
+|----------|-------|
+| **Epic Management** | `epic_load` |
+| **Task Completion** | `task_complete`, `task_status_update`, `detect_completed`, `sync_completion`, `retrospective_complete` |
+| **Task Filtering** | `tasks_ready`, `task_next`, `task_status_summary`, `task_status_refresh` |
+| **PR Management** | `branch_create`, `pr_create`, `pr_list`, `pr_link`, `pr_merge`, `pr_stats` |
 
 ---
 
