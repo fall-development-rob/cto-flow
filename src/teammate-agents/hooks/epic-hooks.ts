@@ -972,16 +972,5 @@ export function unregisterEpicHooks(): void {
   }
 }
 
-// Export hook classes for testing and advanced usage
-export {
-  PreEpicHook,
-  PostEpicPhaseHook,
-  PostSpecificationHook,
-};
-
-// Export payload types
-export type {
-  PreEpicPayload,
-  PostEpicPhasePayload,
-  PostSpecificationPayload,
-};
+// Hook classes are exported at definition (export class ...)
+// Payload types are exported at definition (export interface ...)

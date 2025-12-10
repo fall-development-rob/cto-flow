@@ -124,8 +124,13 @@ class EpicMemoryManager {
 
   /**
    * Sanitize key component to handle special characters
+   * Note: preserves '*' for pattern matching in keys() queries
    */
   private sanitizeKeyComponent(component: string): string {
+    // Keep '*' for pattern matching - only sanitize when it's the entire component
+    if (component === '*') {
+      return '*';
+    }
     return component
       .replace(/:/g, '_')
       .replace(/\*/g, '_')

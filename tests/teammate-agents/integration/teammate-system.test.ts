@@ -72,6 +72,11 @@ class MockGitHubAPI {
   private epics = new Map<string, Epic>();
   private issues = new Map<string, any>();
   private available = true;
+  private idCounter = 0;
+
+  private nextId(prefix: string): string {
+    return `${prefix}_${++this.idCounter}_${Date.now()}`;
+  }
 
   setAvailability(available: boolean): void {
     this.available = available;
@@ -83,7 +88,7 @@ class MockGitHubAPI {
     }
 
     const epic: Epic = {
-      id: `epic_${Date.now()}`,
+      id: this.nextId('epic'),
       title,
       description,
       state: EpicState.UNINITIALIZED,
@@ -124,7 +129,7 @@ class MockGitHubAPI {
     }
 
     const newMilestone: Milestone = {
-      id: `milestone_${Date.now()}`,
+      id: this.nextId('milestone'),
       ...milestone
     };
 
@@ -163,7 +168,20 @@ class MockGitHubAPI {
       throw new Error(`Epic ${epicId} not found`);
     }
 
-    epic.context = { ...epic.context, ...context };
+    // Handle special fields that should update epic directly
+    if ('milestones' in context && Array.isArray(context.milestones)) {
+      epic.milestones = context.milestones;
+    }
+    if ('agents' in context && Array.isArray(context.agents)) {
+      epic.agents = context.agents;
+    }
+    if ('state' in context) {
+      epic.state = context.state as EpicState;
+    }
+
+    // Update remaining context fields
+    const { milestones, agents, state, ...remainingContext } = context as any;
+    epic.context = { ...epic.context, ...remainingContext };
     epic.updatedAt = new Date();
     return epic;
   }
@@ -200,31 +218,32 @@ class MockGitHubAPI {
     this.epics.clear();
     this.issues.clear();
     this.available = true;
+    this.idCounter = 0;
   }
 }
 
 // Mock Memory Manager (fallback)
 class MockMemoryManager {
-  private store = new Map<string, any>();
+  private data = new Map<string, any>();
 
   async store(key: string, value: any): Promise<void> {
-    this.store.set(key, value);
+    this.data.set(key, value);
   }
 
   async retrieve(key: string): Promise<any> {
-    return this.store.get(key);
+    return this.data.get(key);
   }
 
   async delete(key: string): Promise<void> {
-    this.store.delete(key);
+    this.data.delete(key);
   }
 
   async clear(): Promise<void> {
-    this.store.clear();
+    this.data.clear();
   }
 
   async list(prefix: string): Promise<string[]> {
-    return Array.from(this.store.keys()).filter(key => key.startsWith(prefix));
+    return Array.from(this.data.keys()).filter(key => key.startsWith(prefix));
   }
 }
 
@@ -506,8 +525,9 @@ describe('Teammate-Driven Agent Management System - Integration Tests', () => {
     scorer = new MockAgentScorer();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     github.reset();
+    await memory.clear();
   });
 
   describe('1. Teammate Mode Toggle', () => {

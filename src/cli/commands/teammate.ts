@@ -435,4 +435,329 @@ export function setupTeammateCommands(cli: CLI): void {
       }
     },
   });
+
+  // GitHub Project management command
+  cli.command({
+    name: 'project',
+    description: 'Manage GitHub Projects for epic lifecycle tracking',
+    options: [
+      {
+        name: 'teammate-mode',
+        description: 'Enable teammate mode for this command',
+        type: 'boolean',
+      },
+      {
+        name: 'repo',
+        description: 'GitHub repository (owner/repo)',
+        type: 'string',
+      },
+      {
+        name: 'org',
+        description: 'GitHub organization (for org-owned projects)',
+        type: 'string',
+      },
+    ],
+    action: async (ctx: CommandContext) => {
+      const subcommand = ctx.args[0];
+
+      if (!isTeammateModeEnabled(ctx.flags)) {
+        showTeammateModeDisabledMessage('npx claude-flow project');
+        return;
+      }
+
+      const module = await getTeammateModule();
+      if (!module) {
+        error('Teammate-agents module not available. Please ensure it is properly installed.');
+        return;
+      }
+
+      // Parse repo from flag or try to detect from git
+      let owner = '';
+      let repo = '';
+      const repoFlag = ctx.flags.repo as string;
+      if (repoFlag && repoFlag.includes('/')) {
+        [owner, repo] = repoFlag.split('/');
+      }
+
+      const orgFlag = ctx.flags.org as string;
+      if (orgFlag) {
+        owner = orgFlag;
+      }
+
+      switch (subcommand) {
+        case 'create': {
+          const epicId = ctx.args[1];
+          const title = ctx.args.slice(2).join(' ') || ctx.flags.title as string;
+
+          if (!epicId || !title) {
+            error('Usage: project create <epic-id> <title> [--repo owner/repo]');
+            console.log(chalk.dim('\nExample:'));
+            console.log(chalk.cyan('  npx claude-flow project create auth-system "User Authentication System" --repo myorg/myapp'));
+            return;
+          }
+
+          if (!owner || !repo) {
+            error('Repository required. Use --repo owner/repo');
+            return;
+          }
+
+          try {
+            info('Creating GitHub Project...');
+
+            const { TeammateProjectBridge } = module;
+            const bridge = new TeammateProjectBridge({
+              github: {
+                owner,
+                repo,
+                ownerType: orgFlag ? 'org' : 'user',
+              },
+            });
+
+            const description = ctx.flags.description as string || `Epic: ${title}`;
+            const mapping = await bridge.createProjectForEpic(epicId, title, description);
+
+            success('GitHub Project created successfully!');
+            console.log();
+            console.log(chalk.bold.cyan('Project Details:'));
+            console.log(chalk.dim('  Epic ID:'), epicId);
+            console.log(chalk.dim('  Project #:'), mapping.projectNumber);
+            console.log(chalk.dim('  URL:'), chalk.underline(mapping.projectUrl));
+            console.log(chalk.dim('  Issues:'), mapping.issueNumbers.length);
+            console.log();
+            console.log(chalk.dim('Next steps:'));
+            console.log(chalk.dim('  1. Add tasks: ') + chalk.cyan(`npx claude-flow project add-task ${epicId} "Task title"`));
+            console.log(chalk.dim('  2. View progress: ') + chalk.cyan(`npx claude-flow project progress ${epicId}`));
+            console.log();
+          } catch (err: any) {
+            error(`Failed to create project: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'add-task': {
+          const epicId = ctx.args[1];
+          const taskTitle = ctx.args.slice(2).join(' ') || ctx.flags.title as string;
+
+          if (!epicId || !taskTitle) {
+            error('Usage: project add-task <epic-id> <task-title> [--description "..."] [--priority high]');
+            return;
+          }
+
+          try {
+            info('Adding task to project...');
+
+            const { TeammateProjectBridge } = module;
+            const bridge = new TeammateProjectBridge({
+              github: { owner, repo, ownerType: orgFlag ? 'org' : 'user' },
+            });
+
+            const description = ctx.flags.description as string || '';
+            const priority = ctx.flags.priority as string;
+            const labels = ctx.flags.labels ? (ctx.flags.labels as string).split(',') : [];
+
+            const result = await bridge.addTaskToEpic(epicId, taskTitle, description, labels, priority);
+
+            success('Task added successfully!');
+            console.log(chalk.dim('Issue #:'), result.issueNumber);
+            console.log();
+          } catch (err: any) {
+            error(`Failed to add task: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'progress': {
+          const epicId = ctx.args[1];
+
+          if (!epicId) {
+            error('Usage: project progress <epic-id>');
+            return;
+          }
+
+          try {
+            const { TeammateProjectBridge } = module;
+            const bridge = new TeammateProjectBridge({
+              github: { owner, repo, ownerType: orgFlag ? 'org' : 'user' },
+            });
+
+            const progress = await bridge.getEpicProgress(epicId);
+
+            console.log(chalk.bold.cyan(`\nEpic Progress: ${epicId}\n`));
+            console.log(chalk.dim('Total Items:'), progress.total);
+            console.log(chalk.dim('Completed:'), chalk.green(progress.completed));
+            console.log(chalk.dim('In Progress:'), chalk.yellow(progress.inProgress));
+            console.log(chalk.dim('Blocked:'), chalk.red(progress.blocked));
+            console.log();
+
+            // Progress bar
+            const barWidth = 30;
+            const filledWidth = Math.round((progress.percentage / 100) * barWidth);
+            const emptyWidth = barWidth - filledWidth;
+            const progressBar = chalk.green('█'.repeat(filledWidth)) + chalk.gray('░'.repeat(emptyWidth));
+            console.log(`Progress: ${progressBar} ${progress.percentage}%`);
+            console.log();
+
+            // Status breakdown
+            if (Object.keys(progress.statusCounts).length > 0) {
+              console.log(chalk.bold('Status Breakdown:'));
+              for (const [status, count] of Object.entries(progress.statusCounts)) {
+                console.log(`  ${status}: ${count}`);
+              }
+              console.log();
+            }
+          } catch (err: any) {
+            error(`Failed to get progress: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'assign': {
+          const epicId = ctx.args[1];
+          const issueNumber = parseInt(ctx.args[2] || '0', 10);
+          const agentType = ctx.flags.agent as string;
+
+          if (!epicId || !issueNumber || !agentType) {
+            error('Usage: project assign <epic-id> <issue-number> --agent <agent-type>');
+            console.log(chalk.dim('\nExample:'));
+            console.log(chalk.cyan('  npx claude-flow project assign auth-system 42 --agent coder'));
+            return;
+          }
+
+          try {
+            info('Assigning agent to issue...');
+
+            const { TeammateProjectBridge } = module;
+            const bridge = new TeammateProjectBridge({
+              github: { owner, repo, ownerType: orgFlag ? 'org' : 'user' },
+            });
+
+            const agentId = `${agentType}-${Date.now()}`;
+            const score = parseInt(ctx.flags.score as string || '80', 10);
+
+            const assignment = await bridge.assignAgentToIssue(
+              agentId,
+              agentType,
+              issueNumber,
+              epicId,
+              score
+            );
+
+            success('Agent assigned successfully!');
+            console.log(chalk.dim('Agent:'), assignment.agentId);
+            console.log(chalk.dim('Issue #:'), assignment.issueNumber);
+            console.log(chalk.dim('Score:'), assignment.score);
+            console.log();
+          } catch (err: any) {
+            error(`Failed to assign agent: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'available': {
+          try {
+            info('Finding available issues for agents...');
+
+            const { TeammateProjectBridge } = module;
+            const bridge = new TeammateProjectBridge({
+              github: { owner, repo, ownerType: orgFlag ? 'org' : 'user' },
+            });
+
+            const capabilities = ctx.flags.capabilities
+              ? (ctx.flags.capabilities as string).split(',')
+              : [];
+            const domains = ctx.flags.domains
+              ? (ctx.flags.domains as string).split(',')
+              : [];
+
+            const issues = await bridge.getAvailableIssuesForAgent(capabilities, domains);
+
+            if (issues.length === 0) {
+              warning('No available issues found matching the criteria.');
+              return;
+            }
+
+            console.log(chalk.bold.cyan(`\nAvailable Issues (${issues.length}):\n`));
+
+            for (const issue of issues) {
+              const priorityColor = {
+                critical: chalk.red,
+                high: chalk.yellow,
+                medium: chalk.blue,
+                low: chalk.gray,
+              }[issue.priority] || chalk.white;
+
+              console.log(`#${issue.number} ${issue.title}`);
+              console.log(chalk.dim(`  Epic: ${issue.epicId || 'N/A'} | Priority: `) + priorityColor(issue.priority));
+              if (issue.requiredCapabilities.length > 0) {
+                console.log(chalk.dim(`  Required: ${issue.requiredCapabilities.join(', ')}`));
+              }
+              console.log();
+            }
+          } catch (err: any) {
+            error(`Failed to get available issues: ${err.message}`);
+          }
+          break;
+        }
+
+        case 'link-pr': {
+          const prNumber = parseInt(ctx.args[1] || '0', 10);
+          const issueNumber = parseInt(ctx.args[2] || '0', 10);
+          const epicId = ctx.args[3] || ctx.flags.epic as string;
+
+          if (!prNumber || !issueNumber || !epicId) {
+            error('Usage: project link-pr <pr-number> <issue-number> <epic-id>');
+            return;
+          }
+
+          try {
+            info('Linking PR to issue...');
+
+            const { TeammateProjectBridge } = module;
+            const bridge = new TeammateProjectBridge({
+              github: { owner, repo, ownerType: orgFlag ? 'org' : 'user' },
+            });
+
+            await bridge.linkPRToIssue(prNumber, issueNumber, epicId);
+
+            success(`PR #${prNumber} linked to issue #${issueNumber}`);
+          } catch (err: any) {
+            error(`Failed to link PR: ${err.message}`);
+          }
+          break;
+        }
+
+        default: {
+          console.log(chalk.bold('\nGitHub Project Commands:\n'));
+          console.log('  ' + chalk.cyan('project create <epic-id> <title>') + '  Create a GitHub Project for an epic');
+          console.log('  ' + chalk.cyan('project add-task <epic-id> <title>') + ' Add a task issue to the project');
+          console.log('  ' + chalk.cyan('project progress <epic-id>') + '        View epic progress');
+          console.log('  ' + chalk.cyan('project assign <epic-id> <issue> --agent <type>') + '  Assign agent to issue');
+          console.log('  ' + chalk.cyan('project available') + '                 List available issues for agents');
+          console.log('  ' + chalk.cyan('project link-pr <pr> <issue> <epic>') + '  Link a PR to an issue');
+          console.log();
+          console.log(chalk.dim('Options:'));
+          console.log(chalk.dim('  --teammate-mode        Enable teammate mode'));
+          console.log(chalk.dim('  --repo <owner/repo>    GitHub repository'));
+          console.log(chalk.dim('  --org <org-name>       Organization (for org-owned projects)'));
+          console.log(chalk.dim('  --description "..."    Description for project/task'));
+          console.log(chalk.dim('  --priority <level>     Task priority (low|medium|high|critical)'));
+          console.log();
+          console.log(chalk.bold('Example Workflow:\n'));
+          console.log(chalk.dim('  1. Create epic with project:'));
+          console.log(chalk.cyan('     npx claude-flow project create auth-v2 "Auth System v2" --repo myorg/app'));
+          console.log();
+          console.log(chalk.dim('  2. Add tasks:'));
+          console.log(chalk.cyan('     npx claude-flow project add-task auth-v2 "Implement OAuth2" --priority high'));
+          console.log(chalk.cyan('     npx claude-flow project add-task auth-v2 "Add MFA support" --priority medium'));
+          console.log();
+          console.log(chalk.dim('  3. Assign agents:'));
+          console.log(chalk.cyan('     npx claude-flow project assign auth-v2 42 --agent backend-dev'));
+          console.log();
+          console.log(chalk.dim('  4. Track progress:'));
+          console.log(chalk.cyan('     npx claude-flow project progress auth-v2'));
+          console.log();
+        }
+      }
+    },
+  });
 }

@@ -6,6 +6,7 @@ import type { MCPTool, MCPContext, AgentProfile, Task, MemoryEntry } from '../ut
 import type { ILogger } from '../core/logger.js';
 import { getAvailableAgentTypes, getAgentTypeSchema } from '../constants/agent-types.js';
 import type { Permissions } from './auth.js';
+import { createGitHubProjectsTools } from './github-projects-tools.js';
 
 export interface ClaudeFlowToolContext extends MCPContext {
   orchestrator?: any; // Reference to orchestrator instance
@@ -91,6 +92,9 @@ export async function createClaudeFlowTools(logger: ILogger): Promise<MCPTool[]>
     createExecuteCommandTool(logger),
     createListTerminalsTool(logger),
     createCreateTerminalTool(logger),
+
+    // GitHub Projects tools
+    ...createGitHubProjectsTools(logger),
   ];
 
   // Enhance tools with dynamic agent types

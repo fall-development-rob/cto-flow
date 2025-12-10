@@ -120,6 +120,8 @@
     "@anthropic-ai/claude-code": "^2.0.1",
     "@anthropic-ai/sdk": "^0.65.0",
     "@modelcontextprotocol/sdk": "^1.0.4",
+    "@octokit/graphql": "^9.0.3",
+    "@octokit/rest": "^22.0.1",
     "agentic-flow": "^1.9.4",
     "ajv": "^8.17.1",
     "ajv-errors": "^3.0.0",

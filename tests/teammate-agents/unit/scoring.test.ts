@@ -1147,12 +1147,12 @@ describe('6-Factor Agent Scoring Algorithm', () => {
 
       // Each factor contributes equally
       expect(result.capability).toBe(20); // 100 * 0.2
-      expect(result.performance).toBeCloseTo(15.2, 1); // 76 * 0.2
+      expect(result.performance).toBe(16); // (80*0.6 + 80*0.4) * 0.2 = 80 * 0.2
       expect(result.availability).toBe(10); // 50 * 0.2
       expect(result.specialization).toBe(20); // 100 * 0.2
       expect(result.experience).toBe(8); // 40 * 0.2
 
-      expect(result.total).toBeCloseTo(73.2, 1);
+      expect(result.total).toBe(74); // 20 + 16 + 10 + 20 + 8
     });
 
     it('should handle edge case weights (all weight on one factor)', () => {

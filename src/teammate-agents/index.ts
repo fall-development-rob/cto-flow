@@ -9,8 +9,7 @@
 
 // ===== CORE TYPE EXPORTS =====
 export type {
-  // Epic State Machine Types
-  EpicState,
+  // Epic State Machine Types (excluding EpicState - exported separately from epic-state-machine)
   TeammateConfig,
   CreateEpicParams,
   CreateTaskParams,
@@ -40,10 +39,7 @@ export type {
   TaskStatus,
   AgentAvailability,
   ADRStatus,
-
-  // Config Types
-  ConfigValidationResult,
-} from './core/types';
+} from './core/types.js';
 
 // Export core constants
 export {
@@ -55,20 +51,20 @@ export {
   meetsScoreThreshold,
   calculateTotalScore,
   validateScoringWeights,
-} from './core/types';
+} from './core/types.js';
 
-// Export EpicState enum directly
-export { EpicState } from './core/types';
+// Export EpicState from epic-state-machine (the canonical source)
+export { EpicState } from './core/epic-state-machine.js';
 
 // ===== CORE CLASS EXPORTS =====
-export { EpicStateMachine } from './core/epic-state-machine';
+export { EpicStateMachine } from './core/epic-state-machine.js';
 export type {
   TransitionMetadata,
   StateTransition,
   GuardFunction,
   TransitionHook,
   StateMachineConfig
-} from './core/epic-state-machine';
+} from './core/epic-state-machine.js';
 
 export {
   TeammateConfigManager,
@@ -80,14 +76,14 @@ export {
   getConfig,
   loadConfig,
   getConfigManager,
-} from './core/config-manager';
+} from './core/config-manager.js';
 
 export {
   EpicMemoryManager,
   createEpicMemoryManager,
   EPIC_NAMESPACES,
   TTL_PRESETS,
-} from './memory/epic-memory-manager';
+} from './memory/epic-memory-manager.js';
 
 export type {
   MemoryOptions,
@@ -100,14 +96,92 @@ export type {
   SyncState,
   SyncConflict,
   Milestone,
-} from './memory/epic-memory-manager';
+} from './memory/epic-memory-manager.js';
 
 // ===== IMPORTS FOR TEAMMATE MANAGER =====
-import { EpicState, type TeammateConfig as CoreTeammateConfig, type EpicContext, type Assignment, type AgentScore, type CreateEpicParams, type EpicQueryFilter, DEFAULT_TEAMMATE_CONFIG } from './core/types';
-import { EpicStateMachine } from './core/epic-state-machine';
-import { TeammateConfigManager } from './core/config-manager';
-import { EpicMemoryManager } from './memory/epic-memory-manager';
+// Use EpicState from epic-state-machine for state machine operations
+import { EpicStateMachine, EpicState as StateMachineEpicState } from './core/epic-state-machine.js';
+import { type TeammateConfig as CoreTeammateConfig, type Assignment, type AgentPerformance, TaskStatus } from './core/types.js';
+import { TeammateConfigManager } from './core/config-manager.js';
+import { EpicMemoryManager, type EpicContext as MemoryEpicContext, type AgentAssignment } from './memory/epic-memory-manager.js';
 import { randomUUID } from 'crypto';
+
+// ===== IMPORT REAL IMPLEMENTATIONS =====
+// Agent Scoring System (6-factor algorithm)
+import {
+  AgentScorer as RealAgentScorer,
+  createDefaultScorer,
+  createCustomScorer,
+  createCapabilityFocusedScorer,
+  createAvailabilityFocusedScorer,
+  createPerformanceFocusedScorer,
+  DEFAULT_WEIGHTS as SCORER_DEFAULT_WEIGHTS,
+  DEFAULT_SKILL_SYNONYMS,
+  MINIMUM_SCORE_THRESHOLD as SCORER_MINIMUM_THRESHOLD,
+  type AgentCapabilities,
+  type AgentWorkload,
+  type TaskRequirements,
+  type AgentInfo,
+  type ScoreBreakdown,
+  type ScoringWeights,
+  type SkillSynonyms,
+} from './scoring/agent-scorer.js';
+
+// GitHub Epic Sync Service
+import {
+  EpicSyncService as RealEpicSyncService,
+  type SparcSpecification,
+  type UserStory,
+  type Risk,
+  type SparcPhase,
+  type EpicIssue,
+  type ChildIssue,
+  type EpicExportResult,
+  type GitHubConfig,
+  type EpicSyncConfig,
+  type GitHubWebhookEvent,
+  type ConflictResolution,
+  type IMemoryManager,
+} from './github/epic-sync-service.js';
+
+// GitHub Projects Integration
+import {
+  TeammateProjectBridge,
+  createTeammateProjectBridge,
+  DEFAULT_PROJECT_CONFIG,
+  type TeammateProjectConfig,
+  type EpicProjectMapping,
+  type AgentIssueAssignment,
+  type IssueForSelection,
+} from './github/teammate-project-bridge.js';
+
+import {
+  GitHubProjectManager,
+  createUserProjectManager,
+  createOrgProjectManager,
+  DEFAULT_STATUS_OPTIONS,
+  DEFAULT_STATUS_MAPPING,
+  type GitHubProject,
+  type ProjectField,
+  type ProjectFieldOption,
+  type ProjectItem,
+  type ProjectConfig,
+  type CreateProjectOptions,
+  type AddItemOptions,
+  type ProjectSyncState,
+} from './github/project-manager.js';
+
+// Epic Hooks System
+import {
+  registerEpicHooks as realRegisterEpicHooks,
+  unregisterEpicHooks,
+  PreEpicHook,
+  PostEpicPhaseHook,
+  PostSpecificationHook,
+  type PreEpicPayload,
+  type PostEpicPhasePayload,
+  type PostSpecificationPayload,
+} from './hooks/epic-hooks.js';
 
 // ===== TEAMMATE MANAGER TYPES =====
 
@@ -119,7 +193,7 @@ export interface Epic {
   epicId: string;
   name: string;
   description: string;
-  state: EpicState;
+  state: StateMachineEpicState;
   createdAt: Date;
   updatedAt: Date;
   url?: string;
@@ -140,7 +214,7 @@ export interface EpicOptions {
  * Epic filter options
  */
 export interface EpicFilter {
-  state?: EpicState | EpicState[];
+  state?: StateMachineEpicState | StateMachineEpicState[];
   createdAfter?: Date;
   createdBefore?: Date;
 }
@@ -158,9 +232,10 @@ export interface SyncResult {
 }
 
 /**
- * SPARC specification interface (simplified)
+ * Simplified SPARC specification for TeammateManager facade
+ * For full GitHub integration, use SparcSpecification from epic-sync-service
  */
-export interface SparcSpecification {
+export interface SimpleSparcSpec {
   title: string;
   description: string;
   requirements: string[];
@@ -170,9 +245,10 @@ export interface SparcSpecification {
 }
 
 /**
- * Epic export result from SPARC spec
+ * Simplified export result for TeammateManager facade
+ * For full GitHub integration, use EpicExportResult from epic-sync-service
  */
-export interface EpicExportResult {
+export interface SimpleExportResult {
   success: boolean;
   epicId: string;
   epic: Epic;
@@ -194,8 +270,11 @@ export interface EpicExportResult {
 export class TeammateManager {
   private configManager: TeammateConfigManager;
   private memoryManager: EpicMemoryManager;
+  private agentScorer: RealAgentScorer;
+  private projectBridge: TeammateProjectBridge | null = null;
   private stateMachines: Map<string, EpicStateMachine> = new Map();
   private epics: Map<string, Epic> = new Map();
+  private assignments: Map<string, Assignment> = new Map();
   private initialized = false;
 
   /**
@@ -206,6 +285,7 @@ export class TeammateManager {
   constructor(config?: Partial<CoreTeammateConfig>) {
     this.configManager = TeammateConfigManager.getInstance();
     this.memoryManager = new EpicMemoryManager();
+    this.agentScorer = createDefaultScorer();
 
     if (config) {
       this.configManager.loadConfig(config);
@@ -239,6 +319,65 @@ export class TeammateManager {
 
     // Initialize memory manager
     await this.memoryManager.initialize();
+
+    // Initialize GitHub Projects bridge if configured
+    const fullConfig = this.configManager.getConfig();
+    if (fullConfig.github?.owner && fullConfig.github?.repo) {
+      const memoryAdapter: IMemoryManager = {
+        store: async (key: string, value: any, namespace?: string) => {
+          // Use the epic memory manager to store project data
+          const storeKey = namespace ? `${namespace}:${key}` : key;
+          await this.memoryManager.storeEpicContext({
+            epicId: storeKey,
+            title: key,
+            description: JSON.stringify(value),
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: 'teammate-manager',
+            owner: 'system',
+            tags: [namespace || 'default'],
+            metadata: { data: value },
+            dependencies: [],
+            milestones: [],
+            objectives: [],
+            constraints: [],
+          });
+        },
+        retrieve: async (key: string, namespace?: string) => {
+          const storeKey = namespace ? `${namespace}:${key}` : key;
+          const context = await this.memoryManager.loadEpicContext(storeKey);
+          return context?.metadata?.data || null;
+        },
+        delete: async (key: string, namespace?: string) => {
+          const storeKey = namespace ? `${namespace}:${key}` : key;
+          await this.memoryManager.deleteEpic(storeKey);
+        },
+      };
+
+      this.projectBridge = createTeammateProjectBridge(
+        {
+          github: {
+            owner: fullConfig.github.owner,
+            repo: fullConfig.github.repo,
+            ownerType: (fullConfig.github as any).ownerType || 'user',
+          },
+          sync: {
+            enabled: true,
+            autoCreateProject: true,
+            autoAddIssues: true,
+            autoUpdateStatus: true,
+            pollIntervalMs: fullConfig.github.syncInterval || 60000,
+          },
+          agentSelection: {
+            enabled: true,
+            autoAssign: fullConfig.agents?.autoAssignment || false,
+            minScore: fullConfig.agents?.assignmentThreshold || 50,
+          },
+        },
+        memoryAdapter
+      );
+    }
 
     this.initialized = true;
   }
@@ -279,66 +418,77 @@ export class TeammateManager {
       epicId,
       name: title,
       description: options?.metadata?.description as string || '',
-      state: EpicState.UNINITIALIZED,
+      state: StateMachineEpicState.UNINITIALIZED,
       createdAt: now,
       updatedAt: now,
       issueNumber: options?.issueNumber,
       metadata: options?.metadata || {},
     };
 
-    // Create state machine for epic
+    // Create state machine for epic (starts UNINITIALIZED)
     const stateMachine = new EpicStateMachine({
-      initialState: EpicState.UNINITIALIZED,
+      initialState: StateMachineEpicState.UNINITIALIZED,
     });
 
     this.stateMachines.set(epicId, stateMachine);
     this.epics.set(epicId, epic);
 
-    // Store in memory
-    const epicContext: EpicContext = {
+    // Store in memory using MemoryEpicContext type
+    const epicContext: MemoryEpicContext = {
       epicId,
-      name: title,
+      title,
       description: epic.description,
-      state: EpicState.UNINITIALIZED,
-      projectContext: {
-        goals: [],
-        constraints: [],
-        decisions: [],
-        technicalStack: [],
-        requirements: [],
-        stakeholders: [],
-        metadata: {},
-      },
-      tasks: new Map(),
-      assignments: new Map(),
-      adrs: new Map(),
-      agents: new Map(),
-      stateHistory: [],
-      blockingReasons: [],
+      status: 'planning',
       createdAt: now,
       updatedAt: now,
-      metadata: options?.metadata || {},
+      createdBy: 'system',
+      owner: 'system',
+      tags: options?.labels || [],
+      metadata: {
+        ...options?.metadata,
+        state: StateMachineEpicState.UNINITIALIZED,
+        issueNumber: options?.issueNumber,
+      },
+      dependencies: [],
+      milestones: [],
+      objectives: [],
+      constraints: [],
     };
 
     await this.memoryManager.storeEpicContext(epicContext);
 
-    // Transition to ACTIVE state
-    await stateMachine.transition(
-      EpicState.ACTIVE,
-      {
-        reason: 'Epic created',
-        triggeredBy: 'system',
-      },
-      {}
-    );
+    // Transition to ACTIVE state via proper state machine transition
+    await stateMachine.transition(StateMachineEpicState.ACTIVE, {
+      reason: 'Epic created and initialized',
+      triggeredBy: 'system',
+    });
 
-    epic.state = EpicState.ACTIVE;
+    epic.state = StateMachineEpicState.ACTIVE;
     epic.updatedAt = new Date();
 
     // Update in memory
-    epicContext.state = EpicState.ACTIVE;
+    epicContext.status = 'active';
+    epicContext.metadata.state = StateMachineEpicState.ACTIVE;
     epicContext.updatedAt = new Date();
     await this.memoryManager.storeEpicContext(epicContext);
+
+    // Auto-create GitHub Project if bridge is configured
+    if (this.projectBridge) {
+      try {
+        const mapping = await this.projectBridge.createProjectForEpic(
+          epicId,
+          title,
+          epic.description,
+          [] // Initial tasks can be added later
+        );
+        epic.url = mapping.projectUrl;
+        epic.metadata.projectNumber = mapping.projectNumber;
+        epic.metadata.projectId = mapping.projectId;
+      } catch (error) {
+        // Log but don't fail epic creation if project creation fails
+        console.error(`Failed to create GitHub Project for epic ${epicId}:`, error);
+      }
+    }
 
     return epic;
   }
@@ -354,21 +504,24 @@ export class TeammateManager {
       await this.initialize();
     }
 
-    // Try to get from memory
+    // Try to get from in-memory cache
     let epic = this.epics.get(epicId);
 
     if (!epic) {
       // Try to load from memory manager
       const context = await this.memoryManager.loadEpicContext(epicId);
       if (context) {
+        // Convert MemoryEpicContext to Epic
+        const storedState = context.metadata?.state as StateMachineEpicState | undefined;
         epic = {
           id: context.epicId,
           epicId: context.epicId,
-          name: context.name,
+          name: context.title,
           description: context.description,
-          state: context.state,
+          state: storedState || this.statusToState(context.status),
           createdAt: context.createdAt,
           updatedAt: context.updatedAt,
+          issueNumber: context.metadata?.issueNumber as number | undefined,
           metadata: context.metadata,
         };
         this.epics.set(epicId, epic);
@@ -376,6 +529,36 @@ export class TeammateManager {
     }
 
     return epic || null;
+  }
+
+  /**
+   * Convert memory status to EpicState
+   */
+  private statusToState(status: string): StateMachineEpicState {
+    const mapping: Record<string, StateMachineEpicState> = {
+      planning: StateMachineEpicState.UNINITIALIZED,
+      active: StateMachineEpicState.ACTIVE,
+      paused: StateMachineEpicState.PAUSED,
+      completed: StateMachineEpicState.COMPLETED,
+      cancelled: StateMachineEpicState.ARCHIVED,
+    };
+    return mapping[status] || StateMachineEpicState.UNINITIALIZED;
+  }
+
+  /**
+   * Convert EpicState to memory status
+   */
+  private stateToStatus(state: StateMachineEpicState): 'planning' | 'active' | 'paused' | 'completed' | 'cancelled' {
+    const mapping: Record<StateMachineEpicState, 'planning' | 'active' | 'paused' | 'completed' | 'cancelled'> = {
+      [StateMachineEpicState.UNINITIALIZED]: 'planning',
+      [StateMachineEpicState.ACTIVE]: 'active',
+      [StateMachineEpicState.PAUSED]: 'paused',
+      [StateMachineEpicState.BLOCKED]: 'paused',
+      [StateMachineEpicState.REVIEW]: 'active',
+      [StateMachineEpicState.COMPLETED]: 'completed',
+      [StateMachineEpicState.ARCHIVED]: 'cancelled',
+    };
+    return mapping[state] || 'planning';
   }
 
   /**
@@ -450,11 +633,19 @@ export class TeammateManager {
   /**
    * Assign work to an agent from epic
    *
+   * Uses the 6-factor agent scoring algorithm to select the best agent
+   * for the given task based on available registered agents.
+   *
    * @param epicId - Epic identifier
    * @param issueNumber - GitHub issue number
+   * @param availableAgents - Optional list of available agents to score
    * @returns Assignment or null if not possible
    */
-  async assignWork(epicId: string, issueNumber: number): Promise<Assignment | null> {
+  async assignWork(
+    epicId: string,
+    issueNumber: number,
+    availableAgents?: AgentInfo[]
+  ): Promise<Assignment | null> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -464,29 +655,125 @@ export class TeammateManager {
       return null;
     }
 
-    // Load epic context
+    // Load epic context to get constraints/requirements
     const context = await this.memoryManager.loadEpicContext(epicId);
     if (!context) {
       return null;
     }
 
-    // For now, return a placeholder assignment
-    // Real implementation would use agent scoring
-    const assignment: Assignment = {
-      id: randomUUID(),
+    // Build task requirements from epic context
+    const taskRequirements: TaskRequirements = {
       taskId: `task-${issueNumber}`,
-      agentId: 'placeholder-agent',
+      title: `Issue #${issueNumber}`,
+      description: `Work item from epic ${epicId}`,
+      requiredCapabilities: context.objectives || [],
+      preferredCapabilities: [],
+      languages: [],
+      frameworks: [],
+      domains: context.constraints || [],
+      complexity: 'medium',
+      priority: 'medium',
+      estimatedDuration: 60,
+      labels: context.tags || [],
       epicId,
-      assignedAt: new Date(),
-      score: 75,
-      status: 'assigned' as any,
     };
 
-    // Store assignment in context
-    context.assignments.set(assignment.id, assignment);
-    await this.memoryManager.storeEpicContext(context);
+    // Get registered agents from memory if not provided
+    let agents = availableAgents;
+    if (!agents || agents.length === 0) {
+      const epicAgents = await this.memoryManager.getEpicAgents(epicId);
+      if (epicAgents.length === 0) {
+        return null;
+      }
+      // Convert AgentAssignment to AgentInfo for scoring
+      agents = epicAgents
+        .filter(a => a.status === 'active')
+        .map(a => this.agentAssignmentToAgentInfo(a, epicId));
+    }
+
+    if (agents.length === 0) {
+      return null;
+    }
+
+    // Use agent scorer to find best agent
+    let selectedAgentId: string;
+    let selectedScore: number;
+
+    const qualifyingAgents = this.agentScorer.getQualifyingAgents(agents, taskRequirements);
+    if (qualifyingAgents.length > 0) {
+      const bestMatch = qualifyingAgents[0];
+      selectedAgentId = bestMatch.agent.id;
+      selectedScore = bestMatch.overallScore;
+    } else {
+      // No agents meet threshold - use best available anyway with lower confidence
+      const allScores = this.agentScorer.scoreMultipleAgents(agents, taskRequirements);
+      if (allScores.length > 0) {
+        selectedAgentId = allScores[0].agent.id;
+        selectedScore = allScores[0].overallScore;
+      } else {
+        selectedAgentId = agents[0].id;
+        selectedScore = 30; // Low confidence fallback
+      }
+    }
+
+    // Create assignment with real scoring
+    const assignment: Assignment = {
+      id: randomUUID(),
+      taskId: taskRequirements.taskId,
+      agentId: selectedAgentId,
+      epicId,
+      assignedAt: new Date(),
+      score: selectedScore,
+      status: TaskStatus.ASSIGNED,
+    };
+
+    // Record the task assignment
+    const agentAssignment = await this.memoryManager.getAgentAssignment(epicId, selectedAgentId);
+    if (agentAssignment) {
+      agentAssignment.taskIds.push(taskRequirements.taskId);
+      await this.memoryManager.recordAgentAssignment(agentAssignment);
+    }
+
+    // Store assignment in internal cache
+    this.assignments.set(assignment.id, assignment);
 
     return assignment;
+  }
+
+  /**
+   * Convert AgentAssignment from memory to AgentInfo for scoring
+   */
+  private agentAssignmentToAgentInfo(assignment: AgentAssignment, epicId: string): AgentInfo {
+    const lastActivityDate = assignment.assignedAt instanceof Date
+      ? assignment.assignedAt
+      : new Date(assignment.assignedAt);
+
+    return {
+      id: assignment.agentId,
+      type: assignment.role || 'general',
+      capabilities: {
+        core: assignment.responsibilities || [],
+        languages: [],
+        frameworks: [],
+        domains: [],
+      },
+      performance: {
+        tasksCompleted: assignment.taskIds.length,
+        successRate: 0.8, // Default until we have performance tracking
+        averageResponseTime: 1000,
+        averageCompletionTime: 3600000,
+        lastActivity: lastActivityDate,
+        health: assignment.status === 'active' ? 1.0 : 0.5,
+      },
+      workload: {
+        activeTasks: assignment.taskIds.length,
+        maxConcurrentTasks: 5,
+        workloadFactor: assignment.taskIds.length / 5,
+      },
+      status: assignment.status === 'active' ? 'idle' : 'busy',
+      epicExperience: new Map([[epicId, 1]]),
+      metadata: assignment.metadata || {},
+    };
   }
 
   /**
@@ -500,12 +787,9 @@ export class TeammateManager {
       await this.initialize();
     }
 
-    const context = await this.memoryManager.loadEpicContext(epicId);
-    if (!context) {
-      return [];
-    }
-
-    return Array.from(context.assignments.values());
+    // Return assignments from internal cache that match this epic
+    return Array.from(this.assignments.values())
+      .filter(a => a.epicId === epicId);
   }
 
   // ===== CONTEXT OPERATIONS =====
@@ -539,9 +823,9 @@ export class TeammateManager {
    * Restore epic context from memory
    *
    * @param epicId - Epic identifier
-   * @returns Restored epic context
+   * @returns Restored epic context (as MemoryEpicContext)
    */
-  async restoreContext(epicId: string): Promise<EpicContext> {
+  async restoreContext(epicId: string): Promise<MemoryEpicContext> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -551,10 +835,13 @@ export class TeammateManager {
       throw new Error(`Epic context ${epicId} not found`);
     }
 
-    // Restore state machine
+    // Restore state machine with state from metadata or derived from status
+    const storedState = context.metadata?.state as StateMachineEpicState | undefined;
+    const epicState = storedState || this.statusToState(context.status);
+
     if (!this.stateMachines.has(epicId)) {
       const stateMachine = new EpicStateMachine({
-        initialState: context.state,
+        initialState: epicState,
       });
       this.stateMachines.set(epicId, stateMachine);
     }
@@ -563,9 +850,9 @@ export class TeammateManager {
     const epic: Epic = {
       id: context.epicId,
       epicId: context.epicId,
-      name: context.name,
+      name: context.title,
       description: context.description,
-      state: context.state,
+      state: epicState,
       createdAt: context.createdAt,
       updatedAt: context.updatedAt,
       metadata: context.metadata,
@@ -598,7 +885,7 @@ export class TeammateManager {
    * @param spec - SPARC specification
    * @returns Export result
    */
-  async exportSpecToEpic(spec: SparcSpecification): Promise<EpicExportResult> {
+  async exportSpecToEpic(spec: SimpleSparcSpec): Promise<SimpleExportResult> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -609,6 +896,8 @@ export class TeammateManager {
         metadata: {
           description: spec.description,
           source: 'sparc',
+          requirements: spec.requirements,
+          technicalStack: spec.technicalStack,
           ...spec.metadata,
         },
       });
@@ -616,9 +905,13 @@ export class TeammateManager {
       // Load context and update with SPARC data
       const context = await this.memoryManager.loadEpicContext(epic.epicId);
       if (context) {
-        context.projectContext.requirements = spec.requirements;
-        context.projectContext.constraints = spec.constraints;
-        context.projectContext.technicalStack = spec.technicalStack || [];
+        // Store SPARC data in the context fields
+        context.objectives = spec.requirements;
+        context.constraints = spec.constraints;
+        context.metadata = {
+          ...context.metadata,
+          technicalStack: spec.technicalStack || [],
+        };
         context.updatedAt = new Date();
 
         await this.memoryManager.storeEpicContext(context);
@@ -677,10 +970,209 @@ export class TeammateManager {
       return;
     }
 
+    // Stop project sync if running
+    if (this.projectBridge) {
+      this.projectBridge.stopSync();
+    }
+
     await this.memoryManager.shutdown();
     this.stateMachines.clear();
     this.epics.clear();
     this.initialized = false;
+  }
+
+  // ===== GITHUB PROJECTS INTEGRATION =====
+
+  /**
+   * Get the GitHub Projects bridge
+   * Returns null if GitHub is not configured
+   */
+  getProjectBridge(): TeammateProjectBridge | null {
+    return this.projectBridge;
+  }
+
+  /**
+   * Create a task in an epic's GitHub Project
+   *
+   * @param epicId - Epic identifier
+   * @param title - Task title
+   * @param description - Task description
+   * @param options - Additional options (labels, priority)
+   * @returns Issue number and project item ID
+   */
+  async createEpicTask(
+    epicId: string,
+    title: string,
+    description: string,
+    options?: { labels?: string[]; priority?: string }
+  ): Promise<{ issueNumber: number; itemId: string } | null> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.projectBridge) {
+      return null;
+    }
+
+    const epic = await this.getEpic(epicId);
+    if (!epic) {
+      throw new Error(`Epic ${epicId} not found`);
+    }
+
+    return await this.projectBridge.addTaskToEpic(
+      epicId,
+      title,
+      description,
+      options?.labels,
+      options?.priority
+    );
+  }
+
+  /**
+   * Get progress of an epic from its GitHub Project
+   *
+   * @param epicId - Epic identifier
+   * @returns Progress statistics
+   */
+  async getEpicProgress(epicId: string): Promise<{
+    total: number;
+    completed: number;
+    inProgress: number;
+    blocked: number;
+    percentage: number;
+    statusCounts: Record<string, number>;
+  } | null> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.projectBridge) {
+      return null;
+    }
+
+    try {
+      return await this.projectBridge.getEpicProgress(epicId);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get available issues for agent self-selection
+   *
+   * @param agentCapabilities - Agent's capabilities
+   * @param agentDomains - Agent's domain expertise
+   * @returns List of available issues
+   */
+  async getAvailableIssuesForAgent(
+    agentCapabilities: string[],
+    agentDomains: string[]
+  ): Promise<IssueForSelection[]> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.projectBridge) {
+      return [];
+    }
+
+    return await this.projectBridge.getAvailableIssuesForAgent(
+      agentCapabilities,
+      agentDomains
+    );
+  }
+
+  /**
+   * Assign an agent to an issue
+   *
+   * @param agentId - Agent identifier
+   * @param agentType - Agent type
+   * @param issueNumber - GitHub issue number
+   * @param epicId - Epic identifier
+   * @param score - Assignment score
+   * @returns Assignment record
+   */
+  async assignAgentToIssue(
+    agentId: string,
+    agentType: string,
+    issueNumber: number,
+    epicId: string,
+    score: number
+  ): Promise<AgentIssueAssignment | null> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.projectBridge) {
+      return null;
+    }
+
+    return await this.projectBridge.assignAgentToIssue(
+      agentId,
+      agentType,
+      issueNumber,
+      epicId,
+      score
+    );
+  }
+
+  /**
+   * Link a PR to an issue in an epic's project
+   *
+   * @param prNumber - Pull request number
+   * @param issueNumber - Issue number
+   * @param epicId - Epic identifier
+   */
+  async linkPRToIssue(
+    prNumber: number,
+    issueNumber: number,
+    epicId: string
+  ): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.projectBridge) {
+      throw new Error('GitHub Projects not configured');
+    }
+
+    await this.projectBridge.linkPRToIssue(prNumber, issueNumber, epicId);
+  }
+
+  /**
+   * Handle PR merge - closes linked issues and updates project status
+   *
+   * @param prNumber - Pull request number
+   * @param closedIssues - Issue numbers closed by the PR
+   */
+  async handlePRMerge(prNumber: number, closedIssues: number[]): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.projectBridge) {
+      return;
+    }
+
+    await this.projectBridge.handlePRMerge(prNumber, closedIssues);
+  }
+
+  /**
+   * Start automatic synchronization with GitHub Projects
+   */
+  startProjectSync(): void {
+    if (this.projectBridge) {
+      this.projectBridge.startSync();
+    }
+  }
+
+  /**
+   * Stop automatic synchronization with GitHub Projects
+   */
+  stopProjectSync(): void {
+    if (this.projectBridge) {
+      this.projectBridge.stopSync();
+    }
   }
 }
 
@@ -721,71 +1213,130 @@ export async function withTeammateMode<T>(
   return fallback;
 }
 
-// ===== PLACEHOLDER EXPORTS FOR MISSING COMPONENTS =====
+// ===== RE-EXPORT REAL IMPLEMENTATIONS =====
 
 /**
- * Agent Scorer placeholder
- * TODO: Implement full agent scoring system
+ * Agent Scorer - 6-factor scoring algorithm for intelligent agent assignment
+ * Factors: capability (40%), performance (20%), availability (20%), specialization (10%), experience (10%)
  */
-export class AgentScorer {
-  async scoreAgent(agentId: string, taskId: string, context: any): Promise<AgentScore> {
-    return {
-      agentId,
-      taskId,
-      totalScore: 75,
-      breakdown: {
-        capabilityMatch: 80,
-        performanceHistory: 75,
-        availability: 70,
-        specialization: 65,
-        experience: 70,
-      },
-      weights: DEFAULT_TEAMMATE_CONFIG.scoringWeights,
-      meetsThreshold: true,
-      calculatedAt: new Date(),
-      metadata: {},
-    };
+export {
+  RealAgentScorer as AgentScorer,
+  createDefaultScorer,
+  createCustomScorer,
+  createCapabilityFocusedScorer,
+  createAvailabilityFocusedScorer,
+  createPerformanceFocusedScorer,
+  SCORER_DEFAULT_WEIGHTS,
+  DEFAULT_SKILL_SYNONYMS,
+  SCORER_MINIMUM_THRESHOLD,
+};
+
+export type {
+  AgentCapabilities,
+  AgentWorkload,
+  TaskRequirements,
+  AgentInfo,
+  ScoreBreakdown,
+  ScoringWeights,
+  SkillSynonyms,
+};
+
+/**
+ * Epic Sync Service - Bidirectional GitHub sync with conflict resolution
+ */
+export { RealEpicSyncService as EpicSyncService };
+
+export type {
+  SparcSpecification,
+  UserStory,
+  Risk,
+  SparcPhase,
+  EpicIssue,
+  ChildIssue,
+  EpicExportResult,
+  GitHubConfig,
+  EpicSyncConfig,
+  GitHubWebhookEvent,
+  ConflictResolution,
+  IMemoryManager,
+};
+
+/**
+ * Epic Hooks - Lifecycle hooks for epic-related events
+ */
+export {
+  realRegisterEpicHooks as registerEpicHooks,
+  unregisterEpicHooks,
+  PreEpicHook,
+  PostEpicPhaseHook,
+  PostSpecificationHook,
+};
+
+export type {
+  PreEpicPayload,
+  PostEpicPhasePayload,
+  PostSpecificationPayload,
+};
+
+/**
+ * GitHub Projects Integration - Full project lifecycle management
+ */
+export {
+  TeammateProjectBridge,
+  createTeammateProjectBridge,
+  DEFAULT_PROJECT_CONFIG,
+  GitHubProjectManager,
+  createUserProjectManager,
+  createOrgProjectManager,
+  DEFAULT_STATUS_OPTIONS,
+  DEFAULT_STATUS_MAPPING,
+};
+
+export type {
+  TeammateProjectConfig,
+  EpicProjectMapping,
+  AgentIssueAssignment,
+  IssueForSelection,
+  GitHubProject,
+  ProjectField,
+  ProjectFieldOption,
+  ProjectItem,
+  ProjectConfig,
+  CreateProjectOptions,
+  AddItemOptions,
+  ProjectSyncState,
+};
+
+// Track registration state
+let epicCommandsRegistered = false;
+
+/**
+ * Register epic CLI commands with claude-flow
+ *
+ * CLI commands are registered via src/cli/commands/teammate.ts which is
+ * imported and initialized by the main CLI entry point. This function
+ * provides a programmatic hook for custom integrations that may want
+ * to verify or trigger command registration.
+ *
+ * @returns true if commands are now registered, false if already registered
+ */
+export function registerEpicCommands(): boolean {
+  if (epicCommandsRegistered) {
+    return false;
   }
+  // Commands are registered via static import in src/cli/commands/index.ts
+  // This function marks that registration has been acknowledged
+  epicCommandsRegistered = true;
+  return true;
 }
 
 /**
- * Epic Sync Service placeholder
- * TODO: Implement full GitHub sync functionality
+ * Check if epic CLI commands have been registered
+ *
+ * @returns true if registerEpicCommands() has been called
  */
-export class EpicSyncService {
-  async syncToGitHub(epicId: string): Promise<SyncResult> {
-    return {
-      success: true,
-      epicId,
-      synced: true,
-      timestamp: new Date(),
-    };
-  }
-
-  async syncFromGitHub(epicId: string): Promise<SyncResult> {
-    return {
-      success: true,
-      epicId,
-      synced: true,
-      timestamp: new Date(),
-    };
-  }
-}
-
-/**
- * Register epic hooks placeholder
- * TODO: Implement full hooks system
- */
-export function registerEpicHooks(): void {
-  // Placeholder - hooks would be registered with claude-flow
-}
-
-/**
- * Register epic CLI commands placeholder
- * TODO: Implement full CLI integration
- */
-export function registerEpicCommands(): void {
-  // Placeholder - CLI commands would be registered with commander
+export function areEpicCommandsRegistered(): boolean {
+  return epicCommandsRegistered;
 }
 
 // ===== DEFAULT EXPORT =====
