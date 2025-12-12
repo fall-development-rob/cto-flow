@@ -229,6 +229,35 @@ import {
   type ParsedTask,
 } from './parsers/sparc-to-epic.js';
 
+// Worker Configuration (local/codespace/hybrid modes)
+import {
+  getWorkerConfig,
+  setWorkerMode,
+  shouldUseCodespace,
+  getDefaultConfig as getDefaultWorkerConfig,
+  validateWorkerConfig,
+  WorkerConfigManager,
+  DEFAULT_WORKER_CONFIG,
+  type WorkerMode,
+  type WorkerConfig,
+  type TaskContext as WorkerTaskContext,
+  type LocalWorkerConfig,
+  type HybridWorkerConfig,
+  type WorkerConfigValidationResult,
+} from './workers/worker-config.js';
+
+// Codespace Worker (GitHub Codespaces task execution)
+import {
+  CodespaceWorker,
+  createCodespaceWorker,
+  DEFAULT_CODESPACE_CONFIG,
+  type CodespaceWorkerConfig,
+  type TaskExecutionContext,
+  type CodespaceState,
+  type TaskExecutionResult,
+  type ProgressCallback,
+} from './workers/codespace-worker.js';
+
 // GitHub Webhook Server (for real-time issue assignment detection)
 import {
   GitHubWebhookServer,
@@ -1450,6 +1479,47 @@ export {
 export type {
   ParsedEpic,
   ParsedTask,
+};
+
+/**
+ * Worker Configuration - Local/Codespace/Hybrid execution modes
+ * Controls where and how tasks are executed
+ */
+export {
+  getWorkerConfig,
+  setWorkerMode,
+  shouldUseCodespace,
+  getDefaultWorkerConfig,
+  validateWorkerConfig,
+  WorkerConfigManager,
+  DEFAULT_WORKER_CONFIG,
+};
+
+export type {
+  WorkerMode,
+  WorkerConfig,
+  WorkerTaskContext,
+  LocalWorkerConfig,
+  HybridWorkerConfig,
+  WorkerConfigValidationResult,
+};
+
+/**
+ * Codespace Worker - GitHub Codespaces task execution
+ * Executes tasks in isolated codespace environments with agentic-flow
+ */
+export {
+  CodespaceWorker,
+  createCodespaceWorker,
+  DEFAULT_CODESPACE_CONFIG,
+};
+
+export type {
+  CodespaceWorkerConfig,
+  TaskExecutionContext,
+  CodespaceState,
+  TaskExecutionResult,
+  ProgressCallback,
 };
 
 /**

@@ -1,0 +1,280 @@
+name: CTO-Flow Worker - Codespace Automation
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+  codespaces: write
+
+jobs:
+  spawn-codespace-worker:
+    if: github.event.label.name == 'ready-to-build'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Comment on issue - Worker starting
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🚀 **CTO-Flow Worker Starting**
+
+              - Spawning Codespace worker for this issue
+              - Task will execute with agentic-flow
+              - Progress will be reported here
+
+              _Estimated completion: 15-30 minutes_`
+            });
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install GitHub CLI
+        run: |
+          type -p gh >/dev/null || {
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update
+            sudo apt install gh -y
+          }
+
+      - name: Create Codespace
+        id: create-codespace
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Creating Codespace for repository..."
+
+          # Create codespace and capture the name
+          CODESPACE_NAME=$(gh codespace create \
+            --repo "${{ github.repository }}" \
+            --branch "${{ github.event.repository.default_branch }}" \
+            --machine "standardLinux32gb" \
+            --retention-period "1h" \
+            --display-name "cto-flow-worker-issue-${{ github.event.issue.number }}" \
+            --idle-timeout "30m" \
+            | grep -oP '(?<=Created codespace: ).*')
+
+          echo "codespace_name=${CODESPACE_NAME}" >> $GITHUB_OUTPUT
+          echo "Codespace created: ${CODESPACE_NAME}"
+
+      - name: Comment on issue - Codespace created
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ **Codespace Created**
+
+              - Codespace Name: \`${{ steps.create-codespace.outputs.codespace_name }}\`
+              - Setting up agentic-flow environment...`
+            });
+
+      - name: Prepare issue context
+        id: issue-context
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          result-encoding: string
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name).join(',');
+
+            // Create escaped JSON for safe passing
+            const issueData = {
+              number: issue.number,
+              title: issue.title,
+              body: issue.body || '',
+              labels: labels,
+              author: issue.user.login,
+              url: issue.html_url
+            };
+
+            return JSON.stringify(issueData);
+
+      - name: Execute agentic-flow in Codespace
+        id: execute-agentic-flow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          CODESPACE_NAME="${{ steps.create-codespace.outputs.codespace_name }}"
+          ISSUE_CONTEXT='${{ steps.issue-context.outputs.result }}'
+
+          echo "Installing agentic-flow in Codespace..."
+
+          # Install agentic-flow
+          gh codespace ssh --codespace "$CODESPACE_NAME" -- \
+            'npm install -g agentic-flow@latest'
+
+          echo "Setting up environment variables..."
+
+          # Setup environment
+          gh codespace ssh --codespace "$CODESPACE_NAME" -- \
+            "echo 'export ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' >> ~/.bashrc && \
+             echo 'export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}' >> ~/.bashrc && \
+             source ~/.bashrc"
+
+          echo "Executing agentic-flow with issue context..."
+
+          # Create task description from issue
+          ISSUE_NUMBER=$(echo "$ISSUE_CONTEXT" | jq -r '.number')
+          ISSUE_TITLE=$(echo "$ISSUE_CONTEXT" | jq -r '.title')
+          ISSUE_BODY=$(echo "$ISSUE_CONTEXT" | jq -r '.body')
+
+          # Execute agentic-flow with epic mode and auto-PR
+          gh codespace ssh --codespace "$CODESPACE_NAME" -- \
+            "cd /workspaces/$(basename ${{ github.repository }}) && \
+             export ANTHROPIC_API_KEY='${{ secrets.ANTHROPIC_API_KEY }}' && \
+             export GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' && \
+             agentic-flow run \
+               --epic-mode \
+               --auto-pr \
+               --issue-number $ISSUE_NUMBER \
+               --task '$ISSUE_TITLE' \
+               --context '$ISSUE_BODY' \
+               --repo '${{ github.repository }}' \
+               --branch 'cto-flow/issue-$ISSUE_NUMBER' \
+               --timeout 25m \
+               2>&1 | tee /tmp/agentic-flow.log"
+
+          # Capture exit status
+          EXIT_STATUS=$?
+          echo "exit_status=${EXIT_STATUS}" >> $GITHUB_OUTPUT
+
+          # Retrieve logs
+          gh codespace ssh --codespace "$CODESPACE_NAME" -- \
+            'cat /tmp/agentic-flow.log' > /tmp/worker-output.log
+
+          echo "Execution completed with status: ${EXIT_STATUS}"
+
+      - name: Comment on issue - Execution results
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const exitStatus = '${{ steps.execute-agentic-flow.outputs.exit_status }}';
+
+            let logOutput = 'Log file not available';
+            try {
+              logOutput = fs.readFileSync('/tmp/worker-output.log', 'utf8');
+              // Truncate if too long (GitHub comment limit)
+              if (logOutput.length > 60000) {
+                logOutput = logOutput.substring(0, 60000) + '\n\n...(truncated)';
+              }
+            } catch (err) {
+              logOutput = `Could not read log file: ${err.message}`;
+            }
+
+            const success = exitStatus === '0';
+            const statusEmoji = success ? '✅' : '❌';
+            const statusText = success ? 'SUCCESS' : 'FAILED';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${statusEmoji} **Agentic-Flow Execution ${statusText}**
+
+              **Exit Status:** ${exitStatus}
+              **Codespace:** \`${{ steps.create-codespace.outputs.codespace_name }}\`
+
+              <details>
+              <summary>📋 Execution Log</summary>
+
+              \`\`\`
+              ${logOutput}
+              \`\`\`
+
+              </details>
+
+              ${success ? '🎉 Task completed successfully! Check for created PR.' : '⚠️ Task execution failed. Review logs above.'}`
+            });
+
+      - name: Cleanup - Delete Codespace
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CODESPACE_NAME="${{ steps.create-codespace.outputs.codespace_name }}"
+
+          if [ -n "$CODESPACE_NAME" ]; then
+            echo "Deleting Codespace: ${CODESPACE_NAME}"
+            gh codespace delete --codespace "$CODESPACE_NAME" --force || true
+            echo "Codespace cleanup completed"
+          else
+            echo "No codespace to cleanup"
+          fi
+
+      - name: Comment on issue - Cleanup complete
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🧹 **Worker Cleanup Complete**
+
+              - Codespace deleted
+              - Resources released
+              - Workflow finished
+
+              _Check previous comments for execution results_`
+            });
+
+      - name: Remove ready-to-build label
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'ready-to-build'
+              });
+            } catch (error) {
+              console.log('Label already removed or does not exist');
+            }
+
+      - name: Add completion label
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const exitStatus = '${{ steps.execute-agentic-flow.outputs.exit_status }}';
+            const label = exitStatus === '0' ? 'worker-completed' : 'worker-failed';
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [label]
+            });

@@ -386,6 +386,35 @@ export interface CtoFlowConfig {
   enablePerformanceTracking: boolean;
   stateTransitionValidation: boolean;
   metadata: Record<string, unknown>;
+
+  /** Worker execution mode */
+  workerMode?: 'local' | 'codespace' | 'hybrid';
+
+  /** Codespace worker configuration */
+  codespaceWorker?: {
+    machine: 'standardLinux32gb' | 'largePremiumLinux';
+    timeout: number; // minutes, default 30
+    agenticFlowRepo: string; // default: 'ruvnet/agentic-flow'
+    agenticFlowVersion?: string; // default: 'latest'
+  };
+
+  /** Hybrid mode rules */
+  hybridRules?: {
+    /** Labels that trigger codespace execution */
+    useCodespaceForLabels: string[];
+    /** Labels that trigger local execution */
+    useLocalForLabels: string[];
+    /** Default when no label matches */
+    defaultMode: 'local' | 'codespace';
+  };
+
+  /** Auto-merge configuration */
+  autoMerge?: {
+    enabled: boolean;
+    requireAllChecks: boolean;
+    requireApproval: boolean;
+    mergeMethod: 'merge' | 'squash' | 'rebase';
+  };
 }
 
 /**
@@ -401,7 +430,30 @@ export const DEFAULT_CTOFLOW_CONFIG: CtoFlowConfig = {
   enableADRTracking: true,
   enablePerformanceTracking: true,
   stateTransitionValidation: true,
-  metadata: {}
+  metadata: {},
+
+  // Worker configuration defaults
+  workerMode: 'local',
+
+  codespaceWorker: {
+    machine: 'standardLinux32gb',
+    timeout: 30,
+    agenticFlowRepo: 'ruvnet/agentic-flow',
+    agenticFlowVersion: 'latest'
+  },
+
+  hybridRules: {
+    useCodespaceForLabels: ['complex', 'integration', 'performance'],
+    useLocalForLabels: ['quick-fix', 'documentation', 'typo'],
+    defaultMode: 'local'
+  },
+
+  autoMerge: {
+    enabled: false,
+    requireAllChecks: true,
+    requireApproval: true,
+    mergeMethod: 'squash'
+  }
 };
 
 /**
