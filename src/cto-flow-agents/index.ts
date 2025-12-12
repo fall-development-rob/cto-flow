@@ -197,6 +197,38 @@ import {
   type WorkFailedPayload,
 } from './hooks/epic-work-hooks.js';
 
+// Post-SPARC Hook (auto-create epics from SPARC planning)
+import {
+  registerPostSparcHook,
+  unregisterPostSparcHook,
+  handleSparcComplete,
+  PostSparcHook,
+  type SparcOutput,
+  type PostSparcPayload,
+  type CreatedTask,
+} from './hooks/post-sparc-hook.js';
+
+// Post-Work Hook (auto-create PR and update issues)
+import {
+  registerPostWorkHook,
+  unregisterPostWorkHook,
+  handleWorkComplete,
+  PostWorkHook as PostWorkPRHook,
+  type WorkOutput,
+  type PostWorkPayload as PostWorkPRPayload,
+  type PRCreationResult as PostWorkPRResult,
+} from './hooks/post-work-hook.js';
+
+// SPARC to Epic Parser
+import {
+  parseSparcOutput,
+  extractTasks,
+  detectDependencies,
+  convertToSparcSpecification,
+  type ParsedEpic,
+  type ParsedTask,
+} from './parsers/sparc-to-epic.js';
+
 // GitHub Webhook Server (for real-time issue assignment detection)
 import {
   GitHubWebhookServer,
@@ -1368,6 +1400,56 @@ export type {
   PreWorkPayload,
   PostWorkPayload,
   WorkFailedPayload,
+};
+
+/**
+ * Post-SPARC Hook - Auto-create epics from SPARC planning output
+ * Triggers when SPARC planning completes, parses output, and creates GitHub epic
+ */
+export {
+  registerPostSparcHook,
+  unregisterPostSparcHook,
+  handleSparcComplete,
+  PostSparcHook,
+};
+
+export type {
+  SparcOutput,
+  PostSparcPayload,
+  CreatedTask,
+};
+
+/**
+ * Post-Work PR Hook - Auto-create PRs and update issues after work completion
+ * Creates PR, links to issue, updates status, and tracks epic progress
+ */
+export {
+  registerPostWorkHook,
+  unregisterPostWorkHook,
+  handleWorkComplete,
+  PostWorkPRHook,
+};
+
+export type {
+  WorkOutput,
+  PostWorkPRPayload,
+  PostWorkPRResult,
+};
+
+/**
+ * SPARC to Epic Parser - Extract structured epic data from SPARC output
+ * Parses specifications, architecture, and refinement phases into tasks
+ */
+export {
+  parseSparcOutput,
+  extractTasks,
+  detectDependencies,
+  convertToSparcSpecification,
+};
+
+export type {
+  ParsedEpic,
+  ParsedTask,
 };
 
 /**
